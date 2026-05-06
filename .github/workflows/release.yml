@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build (no leading v)'
+        required: true
+        default: '0.1.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    # macos-14 = Apple Silicon (M1) runner. Required because we depend on Metal
+    # and ship an arm64-only binary.
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "tag=v${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            tag="${GITHUB_REF##*/}"
+            echo "tag=$tag" >> "$GITHUB_OUTPUT"
+            echo "value=${tag#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Cache whisper.cpp build
+        uses: actions/cache@v4
+        with:
+          path: vendor/whisper.cpp/build
+          key: whisper-1.7.4-${{ runner.os }}-${{ runner.arch }}-v1
+          restore-keys: |
+            whisper-1.7.4-${{ runner.os }}-${{ runner.arch }}-
+
+      - name: Build whisper.cpp (Metal, static)
+        run: |
+          mkdir -p vendor
+          if [ ! -d vendor/whisper.cpp/.git ]; then
+            git clone --depth 1 --branch v1.7.4 \
+              https://github.com/ggerganov/whisper.cpp.git vendor/whisper.cpp
+          fi
+          cmake -S vendor/whisper.cpp -B vendor/whisper.cpp/build \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DGGML_METAL=ON \
+            -DGGML_METAL_EMBED_LIBRARY=ON \
+            -DGGML_BLAS=ON \
+            -DGGML_ACCELERATE=ON \
+            -DWHISPER_BUILD_TESTS=OFF \
+            -DWHISPER_BUILD_EXAMPLES=OFF \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0
+          cmake --build vendor/whisper.cpp/build -j --config Release
+
+      - name: Build app bundle
+        run: make app
+
+      - name: Verify code signature
+        run: codesign --verify --deep --strict --verbose=2 build/VoiceInput.app
+
+      - name: Package
+        run: make release VERSION=${{ steps.ver.outputs.value }}
+
+      - name: Compute SHA-256
+        id: sha
+        run: |
+          sha=$(shasum -a 256 build/VoiceInput-${{ steps.ver.outputs.value }}.zip | awk '{print $1}')
+          echo "value=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: VoiceInput ${{ steps.ver.outputs.tag }}
+          generate_release_notes: true
+          files: build/VoiceInput-${{ steps.ver.outputs.value }}.zip
+          body: |
+            ## 安装
+
+            1. 下载下方的 `VoiceInput-${{ steps.ver.outputs.value }}.zip` 并解压
+            2. 把 `VoiceInput.app` 拖到 `/Applications`（可选）
+            3. **首次打开必须右键**：右键 .app → 「打开」 → 在弹窗里再点 「打开」
+               （没买 Apple Developer 证书做 notarization，Gatekeeper 默认拒绝运行；
+               这样绕过一次后下次就能直接双击了）
+            4. 第一次启动会要求授权 **麦克风** + **辅助功能** 两项权限，都给上
+            5. 启动后菜单栏出现话筒图标 → 点开 → 跟随提示**下载语音识别模型**（约 1.5 GB，App 内一键下载）
+            6. 想用润色功能需要终端里能跑 `claude` 命令（Claude Code CLI）
+
+            ## 系统要求
+            - Apple Silicon Mac（M1 / M2 / M3 / M4 系列）
+            - macOS 13+
+
+            ## 校验
+
+            ```
+            shasum -a 256 VoiceInput-${{ steps.ver.outputs.value }}.zip
+            # 应该是: ${{ steps.sha.outputs.value }}
+            ```

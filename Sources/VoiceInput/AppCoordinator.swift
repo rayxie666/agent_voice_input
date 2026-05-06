@@ -32,6 +32,7 @@ final class AppCoordinator: ObservableObject {
     private let streaming = StreamingSession()
     private var streamingTimer: Timer?
     private var polishBubble: PolishBubble?
+    let downloader = ModelDownloader()
     /// Char count of whatever raw transcript was last typed at the cursor —
     /// used as the backspace count when the user asks to polish in place.
     private var lastTypedCharCount: Int = 0
@@ -65,6 +66,19 @@ final class AppCoordinator: ObservableObject {
         polishBubble = PolishBubble { [weak self] in
             Task { @MainActor in self?.polishLastTyped() }
         }
+
+        // When the downloader finishes, point the model path at the standard
+        // Application Support location and try to load it.
+        downloader.onCompleted = { [weak self] in
+            self?.settings.modelPath = ModelDownloader.destination.path
+            self?.loadModel()
+        }
+
+        // Forward downloader's @Published changes to our own observers so the
+        // SwiftUI menu-bar view can render progress without doubly-binding.
+        downloader.objectWillChange
+            .sink { [weak self] in self?.objectWillChange.send() }
+            .store(in: &cancellables)
 
         loadModel()
         startAccessibilityWatcher()

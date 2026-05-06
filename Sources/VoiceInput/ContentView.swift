@@ -59,12 +59,73 @@ struct ContentView: View {
                 Button("退出") { NSApp.terminate(nil) }
             }
 
-            if let err = coordinator.modelLoadError {
-                Text("模型未加载：\(err)").font(.caption).foregroundStyle(.red)
+            // Model not loaded: split into "missing entirely" (offer download)
+            // vs "load error on a present file" (just show the error).
+            if !coordinator.modelLoaded {
+                modelDownloadSection
             }
         }
         .padding(14)
         .frame(width: 360)
+    }
+
+    @ViewBuilder
+    private var modelDownloadSection: some View {
+        Divider()
+        let path = settings.modelPath
+        let fileExists = FileManager.default.fileExists(atPath: path)
+        let downloader = coordinator.downloader
+
+        VStack(alignment: .leading, spacing: 8) {
+            if !fileExists {
+                Label("还没下载语音识别模型", systemImage: "arrow.down.circle")
+                    .font(.headline)
+                Text("ggml-medium.bin · 约 1.5 GB · 一次性下载到 ~/Library/Application Support/VoiceInput/")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                switch downloader.state {
+                case .idle:
+                    Button {
+                        downloader.start()
+                    } label: {
+                        Label("下载模型", systemImage: "arrow.down.circle.fill")
+                    }
+                    .controlSize(.large)
+
+                case .downloading:
+                    ProgressView(value: downloader.progress) {
+                        HStack {
+                            Text("下载中…")
+                            Spacer()
+                            Text("\(ModelDownloader.formatBytes(downloader.bytesDownloaded)) / \(ModelDownloader.formatBytes(downloader.totalBytes))")
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Button("取消") { downloader.cancel() }
+
+                case .completed:
+                    Text("下载完成，正在加载模型…")
+                        .font(.caption)
+                        .foregroundStyle(.green)
+
+                case .failed(let msg):
+                    Text("下载失败：\(msg)")
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("重试") { downloader.start() }
+                }
+            } else if let err = coordinator.modelLoadError {
+                Label("模型加载失败", systemImage: "exclamationmark.triangle.fill")
+                    .font(.headline)
+                Text(err).font(.caption).foregroundStyle(.red)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button("重试加载") { coordinator.loadModel() }
+            }
+        }
     }
 
     private var accessibilityBanner: some View {

@@ -1,0 +1,28 @@
+# Swift / SPM
+.build/
+.swiftpm/
+Package.resolved
+DerivedData/
+
+# Xcode
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+
+# Build artifacts
+build/
+VoiceInput.app/
+*.dSYM/
+
+# Vendored deps (re-fetch via setup.sh)
+vendor/
+
+# Whisper models (large binaries)
+Models/*.bin
+Models/*.mlmodelc/
+
+# macOS
+.DS_Store
+*.swp
+
+# Claude Code per-user settings
+.claude/

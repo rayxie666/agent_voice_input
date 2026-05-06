@@ -1,4 +1,4 @@
-.PHONY: setup build app run permit release clean clean-all
+.PHONY: setup build app run permit release dmg clean clean-all
 
 APP_NAME := VoiceInput
 APP_BUNDLE := build/$(APP_NAME).app
@@ -6,7 +6,8 @@ BIN := .build/release/$(APP_NAME)
 
 # Override on the make command line: `make release VERSION=0.1.1`
 VERSION ?= 0.1.0
-RELEASE_ZIP := build/$(APP_NAME)-$(VERSION).zip
+RELEASE_DMG := build/$(APP_NAME)-$(VERSION).dmg
+DMG_STAGING := build/dmg-staging
 
 setup:
 	./setup.sh
@@ -28,19 +29,42 @@ app: build
 run: app
 	open "$(APP_BUNDLE)"
 
-# Build a distributable zip of the .app for GitHub Releases. We preserve the
-# Mach-O signature with `zip -y` (don't follow symlinks; some bundles include
-# them) so codesign --verify still passes after unzip.
-release: app
-	@rm -f "$(RELEASE_ZIP)"
-	cd build && zip -r -y "$(APP_NAME)-$(VERSION).zip" "$(APP_NAME).app"
+# Build a distributable DMG (drag .app to /Applications) for GitHub Releases.
+# Requires `create-dmg`: brew install create-dmg
+dmg: app
+	@command -v create-dmg >/dev/null 2>&1 || { \
+	    echo "ERROR: create-dmg not installed. Run: brew install create-dmg"; \
+	    exit 1; \
+	}
+	@rm -rf "$(DMG_STAGING)" "$(RELEASE_DMG)"
+	@mkdir -p "$(DMG_STAGING)"
+	cp -R "$(APP_BUNDLE)" "$(DMG_STAGING)/"
+	# create-dmg lays out a 540x380 window with the .app at left and a
+	# symlink to /Applications at right — the canonical "drag here" UX.
+	# --skip-jenkins: don't fail on stale .DS_Store; --no-internet-enable:
+	# don't auto-mount on download (avoids "missing internet enable" warnings).
+	create-dmg \
+	    --volname "$(APP_NAME) $(VERSION)" \
+	    --window-pos 200 120 \
+	    --window-size 540 380 \
+	    --icon-size 100 \
+	    --icon "$(APP_NAME).app" 130 180 \
+	    --hide-extension "$(APP_NAME).app" \
+	    --app-drop-link 410 180 \
+	    --skip-jenkins \
+	    "$(RELEASE_DMG)" \
+	    "$(DMG_STAGING)"
+	@rm -rf "$(DMG_STAGING)"
 	@echo
-	@echo "==> Built $(RELEASE_ZIP)"
+	@echo "==> Built $(RELEASE_DMG)"
 	@echo "==> SHA-256:"
-	@shasum -a 256 "$(RELEASE_ZIP)"
+	@shasum -a 256 "$(RELEASE_DMG)"
+
+# Top-level "make release" entry: produces the DMG and prints upload hints.
+release: dmg
 	@echo
 	@echo "Upload manually with:"
-	@echo "    gh release create v$(VERSION) $(RELEASE_ZIP) --generate-notes"
+	@echo "    gh release create v$(VERSION) $(RELEASE_DMG) --generate-notes"
 	@echo
 	@echo "Or push a tag to trigger the GitHub Actions workflow:"
 	@echo "    git tag v$(VERSION) && git push origin v$(VERSION)"

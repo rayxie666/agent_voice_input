@@ -64,19 +64,22 @@ jobs:
             -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0
           cmake --build vendor/whisper.cpp/build -j --config Release
 
+      - name: Install create-dmg
+        run: brew install create-dmg
+
       - name: Build app bundle
         run: make app
 
       - name: Verify code signature
         run: codesign --verify --deep --strict --verbose=2 build/VoiceInput.app
 
-      - name: Package
-        run: make release VERSION=${{ steps.ver.outputs.value }}
+      - name: Package as DMG
+        run: make dmg VERSION=${{ steps.ver.outputs.value }}
 
       - name: Compute SHA-256
         id: sha
         run: |
-          sha=$(shasum -a 256 build/VoiceInput-${{ steps.ver.outputs.value }}.zip | awk '{print $1}')
+          sha=$(shasum -a 256 build/VoiceInput-${{ steps.ver.outputs.value }}.dmg | awk '{print $1}')
           echo "value=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
@@ -85,26 +88,28 @@ jobs:
           tag_name: ${{ steps.ver.outputs.tag }}
           name: VoiceInput ${{ steps.ver.outputs.tag }}
           generate_release_notes: true
-          files: build/VoiceInput-${{ steps.ver.outputs.value }}.zip
+          files: build/VoiceInput-${{ steps.ver.outputs.value }}.dmg
           body: |
             ## 安装
 
-            1. 下载下方的 `VoiceInput-${{ steps.ver.outputs.value }}.zip` 并解压
-            2. 把 `VoiceInput.app` 拖到 `/Applications`（可选）
-            3. **首次打开必须右键**：右键 .app → 「打开」 → 在弹窗里再点 「打开」
-               （没买 Apple Developer 证书做 notarization，Gatekeeper 默认拒绝运行；
-               这样绕过一次后下次就能直接双击了）
-            4. 第一次启动会要求授权 **麦克风** + **辅助功能** 两项权限，都给上
-            5. 启动后菜单栏出现话筒图标 → 点开 → 跟随提示**下载语音识别模型**（约 1.5 GB，App 内一键下载）
-            6. 想用润色功能需要终端里能跑 `claude` 命令（Claude Code CLI）
+            1. 下载下方的 `VoiceInput-${{ steps.ver.outputs.value }}.dmg`
+            2. 双击挂载 → 把 `VoiceInput` 图标**拖到 `Applications` 文件夹**
+            3. 在启动台里找到 VoiceInput 图标
+            4. **首次打开必须右键**：右键 → 「打开」 → 弹窗里再点 「打开」
+               （这一步绕过 macOS Gatekeeper，仅需做一次。
+               没花 99 美元买 Apple Developer 证书做 notarization，
+               系统默认会把没注册过的 App 标记成「已损坏」。）
+            5. 第一次启动会要求授权 **麦克风** + **辅助功能** 两项权限，都给上
+            6. 菜单栏出现话筒图标 → 点开 → 跟随提示**下载语音识别模型**（~1.5 GB，App 内一键下载）
+            7. 想用润色功能：终端里能跑 `claude` 命令（Claude Code CLI）即可
 
             ## 系统要求
             - Apple Silicon Mac（M1 / M2 / M3 / M4 系列）
             - macOS 13+
 
-            ## 校验
+            ## 校验下载完整性
 
             ```
-            shasum -a 256 VoiceInput-${{ steps.ver.outputs.value }}.zip
-            # 应该是: ${{ steps.sha.outputs.value }}
+            shasum -a 256 VoiceInput-${{ steps.ver.outputs.value }}.dmg
+            # 应输出: ${{ steps.sha.outputs.value }}
             ```

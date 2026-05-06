@@ -15,12 +15,12 @@ prompt 后注入进去。
 ## 下载（推荐）
 
 去 [Releases 页面](https://github.com/rayxie666/agent_voice_input/releases/latest)
-下载 `VoiceInput-<版本>.zip`，解压：
+下载 `VoiceInput-<版本>.dmg`：
 
-1. 把 `VoiceInput.app` 拖到 `/Applications`（可选）
+1. 双击 `.dmg` 挂载 → 把 `VoiceInput` 图标**拖到 `Applications` 文件夹**
 2. **首次打开必须右键**：右键 → 「打开」 → 弹窗里再点一次 「打开」
-   （没买 Apple Developer 证书做 notarization，Gatekeeper 默认拒绝运行；
-   这一步只用做一次，之后双击就行）
+   （没买 Apple Developer 证书做 notarization，macOS Gatekeeper 默认会
+   把没注册过的 App 标记成「已损坏」；这一步绕过一次就行，之后双击都正常）
 3. 启动后菜单栏出现话筒图标 → 点开 → 一键下载语音识别模型（~1.5 GB）
 4. 给麦克风和辅助功能授权（系统会提示）
 5. 想用润色功能：终端里能跑 `claude` 命令（Claude Code CLI）即可
@@ -44,9 +44,9 @@ make app
 make run
 # 或者直接：open build/VoiceInput.app
 
-# 4. 打 release zip + 上传到 GitHub Releases
+# 4. 打 release DMG + 上传到 GitHub Releases
 make release VERSION=0.1.0
-gh release create v0.1.0 build/VoiceInput-0.1.0.zip --generate-notes
+gh release create v0.1.0 build/VoiceInput-0.1.0.dmg --generate-notes
 # 或者推 tag 让 .github/workflows/release.yml 自动构建上传：
 git tag v0.1.0 && git push origin v0.1.0
 ```
@@ -54,6 +54,7 @@ git tag v0.1.0 && git push origin v0.1.0
 源码构建额外需要：
 - Xcode Command Line Tools (`xcode-select --install`)
 - `cmake`：`brew install cmake`
+- `create-dmg`（仅打 release 用）：`brew install create-dmg`
 
 首次启动会弹两次系统授权框：
 
